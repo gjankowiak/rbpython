@@ -57,7 +57,7 @@ class AffineReducedBasisSolver(object):
         return sol
 
     def solve(self, A, rhs):
-        sol = la.solve(A, rhs, sym_pos=True)
+        sol = la.solve(A, rhs)
         return sol
 
     # methods:
