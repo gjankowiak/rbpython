@@ -68,6 +68,7 @@ class AffineReducedBasisSolver(object):
 
         self.n = basis_size
         self.do_ortho = do_ortho
+        self.previous_err = np.inf
 
         param_space_size = reduce(lambda s, l:s*len(l), self.param_space, 1)
         if self.n > param_space_size:
@@ -106,6 +107,9 @@ class AffineReducedBasisSolver(object):
 
         while True:
             err, idc = self.error_argmax()
+            if err > self.previous_err:
+                raise RBConvergenceError('Residual norm has increased from last step, something has gone wrong, aborting')
+            self.previous_err = err
             if err < tol: break
             if self.k == self.n:
                 raise RBConvergenceError('failed to meet tolerance {0:.2e} with {1} basis functions'.format(tol, self.n))
