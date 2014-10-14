@@ -65,7 +65,7 @@ class AffineReducedBasisSolver(object):
         if method != 'ap':
             raise NotImplemented('only a posteriori estimator is available for now')
 
-        self.s_idc = [[] for r in self.param_space]
+        self.s_idc = []
 
         # initialization
         i_idx = []
@@ -106,7 +106,8 @@ class AffineReducedBasisSolver(object):
                 m.mult(u, _)
                 bl_int = ub.inner(_)
                 # not very efficient
-                self.rb_mats[i].set(utils.f64_array(bl_int), utils.intc_array([j]), utils.intc_array([self.k]))
+                self.rb_mats[i].set(utils.f64_array(bl_int), utils.intc_array([j]), utils.intc_array([self.k-1]))
+                self.rb_mats[i].set(utils.f64_array(bl_int), utils.intc_array([self.k-1]), utils.intc_array([j]))
         self.L2_prod.mult(u, _)
         self.rb_rhs.add(utils.f64_array(u.inner(_)), utils.intc_array([self.k-1]))
 
@@ -127,9 +128,10 @@ class AffineReducedBasisSolver(object):
                     residual.add_local(self.factors[q](params)*u_rb_arr[n]* self.psis[n][q])
             # compute error
             err = np.sqrt(self.inner(residual, residual))
+            print "Current error: {0}, k={1}".format(err_max, self.k)
             if err > err_max:
                 [err_max, idc_max] = [err, idc]
-        print "Current error: {0}".format(err_max)
+        print "Current max error: {0}".format(err_max)
         return err_max, idc_max
 
     def _test_solve(self, mat):
@@ -142,18 +144,18 @@ class AffineReducedBasisSolver(object):
     def rb_matrix(self, params_idc):
         params = [self.param_space[i][params_idc[i]] for i in range(len(params_idc))]
         M = self.factors[0](params)*self.rb_mats[0]
-        self._test_solve(self.rb_mats[0])
-        for i, m in enumerate(self.rb_mats[1:]):
-            M += self.factors[i](params)*m
-            self._test_solve(M)
+        for i, m in enumerate(self.rb_mats[1:], 1):
+            M = M + self.factors[i](params)*m
+        print params_idc, params
+        print M.array()
         return M
 
     def bl_matrix(self, params_idc, idx='all'):
         params = [self.param_space[i][params_idc[i]] for i in range(len(params_idc))]
         if idx == 'all':
             M = self.factors[0](params)*self.matrices[0]
-            for i, m in enumerate(self.matrices[1:]):
-                M += self.factors[i](params)*m
+            for i, m in enumerate(self.matrices[1:], 1):
+                M = M + self.factors[i](params)*m
         else:
             M = self.factors[idx](params)*self.matrices[idx]
         return M
