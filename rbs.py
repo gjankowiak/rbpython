@@ -64,7 +64,7 @@ class AffineReducedBasisSolver(object):
     #   - 'ap'   : a posteriori estimator
     #   - 'pod'  : proper orthogonal decomposition
     #   - 'true' : true error
-    def reduce(self, tol, method='ap', basis_size=10, do_ortho=True, start_idc=None):
+    def reduce(self, tol, method='ap', basis_size=10, do_ortho=True, start_idc=None, progress_plots=False):
 
         self.n = basis_size
         self.do_ortho = do_ortho
@@ -79,9 +79,6 @@ class AffineReducedBasisSolver(object):
         self.rb_mats = [np.eye(self.n) for r in self.forms]
         self.rhs_rb = np.zeros(self.n)
 
-        if method != 'ap':
-            raise NotImplemented('only a posteriori estimator is available for now')
-
         self.s_idc = []
 
         # initialization
@@ -95,20 +92,24 @@ class AffineReducedBasisSolver(object):
 
         u0 = self.spsolve(self.bl_matrix(self.s_idc[self.k]), self.source)
         u0 = self.ortho(u0)
+        if progress_plots:
+            self.plot(u0)
 
-        # phi
-        self.phi = self.spsolve(self.inner_prod_mat, self.source)
+        if method == 'ap':
+            # phi
+            self.phi = self.spsolve(self.inner_prod_mat, self.source)
 
-        # psis
-        self.psis = []
-        self.compute_psis(u0)
+            # psis
+            self.psis = []
+            self.compute_psis(u0)
 
         self.add(u0)
 
         while True:
-            err, idc = self.error_argmax()
+            err, idc = self.error_argmax(method=method)
             if err > self.previous_err:
-                raise RBConvergenceError('Residual norm has increased from last step, something has gone wrong, aborting')
+                msg = 'Residual norm has increased from last step (x{0}), something has gone wrong, aborting'.format(int(np.rint(err/self.previous_err)))
+                raise RBConvergenceError(msg)
             self.previous_err = err
             if err < tol: break
             if self.k == self.n:
@@ -116,8 +117,12 @@ class AffineReducedBasisSolver(object):
 
             u = self.spsolve(self.bl_matrix(idc), self.source)
             u = self.ortho(u)
+            if progress_plots:
+                self.plot(u)
 
-            self.compute_psis(u)
+            if method == 'ap':
+                self.compute_psis(u)
+
             self.add(u)
             self.s_idc.append(idc)
 
@@ -130,32 +135,41 @@ class AffineReducedBasisSolver(object):
         self.basis.append(u)
         for i, m in enumerate(self.matrices):
             for j, ub in enumerate(self.basis):
-                bl_int = ub.dot(m*u)
+                bl_int_r = ub.dot(m*u)
+                bl_int_l = u.dot(m*ub)
                 # not very efficient
-                self.rb_mats[i][j, self.k-1] = bl_int
-                self.rb_mats[i][self.k-1, j] = bl_int
+                self.rb_mats[i][j, self.k-1] = bl_int_r
+                self.rb_mats[i][self.k-1, j] = bl_int_l
         self.rhs_rb[self.k-1] = u.dot(self.source)
 
-    def error_argmax(self):
+    def error_argmax(self, method):
         idc_max = None
         err_max = -1
         for idc, params in utils.ml_iterator(self.param_space, values=True):
             if idc in self.s_idc: continue
             # solve problem on reduced basis
             M_rb = self.rb_matrix(idc)
-            u_rb = self.solve(M_rb, self.rhs_rb)
+            u_rb_coeffs = self.solve(M_rb, self.rhs_rb)
             # assemble residual dual
-            residual = np.array(self.phi)
-            for n in range(self.k):
-                for q in range(len(self.forms)):
-                    residual -= self.factors[q](params)*u_rb[n]*self.psis[n][q]
-            # compute error
-            err = np.sqrt(self.inner(residual, residual))
+            if method == 'ap':
+                residual = np.array(self.phi)
+                for n in range(self.k):
+                    for q in range(len(self.forms)):
+                        residual -= self.factors[q](params)*u_rb_coeffs[n]*self.psis[n][q]
+                # compute error
+                err = np.sqrt(self.inner(residual, residual))
+            elif method == 'true':
+                u_exact = self.spsolve(self.bl_matrix(idc), self.source)
+                u_rb = np.zeros_like(u_exact)
+                for n in range(self.k):
+                    u_rb += u_rb_coeffs[n]*self.basis[n]
+                err = np.sqrt(self.inner(u_exact-u_rb, u_exact-u_rb))
             if err > err_max:
                 [err_max, idc_max] = [err, list(idc)]
         if idc_max is None:
             raise ParameterSpaceDepleted
-        print "Max error: {0}".format(err_max)
+        print
+        print "Max error: {0} ({1})".format(err_max, str(idc_max))
         return err_max, idc_max
 
     def rb_matrix(self, params_idc):
@@ -208,9 +222,7 @@ class AffineReducedBasisSolver(object):
         self.psis.append(psis_k)
 
     def plot(self, u):
-        f_u = Function(self.V)
-        f_u.vector()[:] = u
-        plot(f_u, interactive=True)
+        plot(self.fe_function(u), interactive=True)
 
     def cleanup(self):
         self.phi = self.psis = self.rb_mats = self.rhs_rb = None
