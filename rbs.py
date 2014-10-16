@@ -71,6 +71,8 @@ class AffineReducedBasisSolver(object):
                           symmetric=True):
 
         dual = method == 'ap' and not symmetric
+        if dual:
+            print 'Non symmetric problem, will solve both primal and dual systems'
 
         self.n = basis_size
         self.do_ortho = do_ortho
