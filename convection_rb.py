@@ -3,7 +3,7 @@ import rbs
 import numpy as np
 import matplotlib.pyplot as plt
 
-parameters['linear_algebra_backend'] = 'uBLAS'
+profile = False
 
 Nf = 80
 penalization = Constant(1e8)
@@ -59,15 +59,20 @@ full_form = c0*a0 + c1*a1 + c2*a2 + c3*a3
 source = f*v*dx
 
 param_space = [
-        np.linspace(0, 50, 20),
-        np.linspace(0, 2*pi, 20),
+        np.linspace(0, 5000, 200),
+        np.linspace(0, 2*pi, 200),
         ]
 
 solvr = rbs.AffineReducedBasisSolver(full_form, coeffs, factors, source, VCell, param_space, bcs=bc)
-errs, exception = solvr.reduce(1e-10, do_ortho=True, basis_size=50, progress_plots=False, method='ap')
 
-plt.semilogy(errs)
-plt.show()
+if profile:
+    import cProfile
+    cProfile.run("solvr.reduce(1e-10, do_ortho=True, basis_size=50, progress_plots=False, method='ap')")
+else:
+    errs, exception = solvr.reduce(1e-10, do_ortho=True, basis_size=50, progress_plots=False, method='ap')
 
-if exception:
-    raise exception
+    plt.semilogy(errs)
+    plt.show()
+
+    if exception:
+        raise exception

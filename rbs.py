@@ -40,9 +40,10 @@ class AffineReducedBasisSolver(object):
         u, v = TrialFunction(self.V), TestFunction(self.V)
 
         if options.has_key('inner_prod'):
-            self.inner_prod_mat = options['inner_prod']
+            self.inner_prod = options['inner_prod']
         else:
-            self.inner_prod_mat = (inner(grad(u), grad(v)) + u*v)*dx
+            self.inner_prod = (inner(grad(u), grad(v)) + u*v)*dx
+        self.inner_prod_mat = assemble(self.inner_prod, bcs=self.bcs)
 
         if len(coeffs) != len(factors):
             raise ValueError('`forms` and `factors` must have same length')
@@ -102,7 +103,7 @@ class AffineReducedBasisSolver(object):
         if method in ['ap', 'sap']:
             # phi
             phi = Function(self.V)
-            solve(self.inner_prod_mat == self.source, phi, bcs=self.bcs)
+            solve(self.inner_prod == self.source, phi, bcs=self.bcs)
             self.phi = phi
 
             # psis
@@ -229,7 +230,7 @@ class AffineReducedBasisSolver(object):
         return self.forms
 
     def inner(self, u, v):
-        return assemble(inner(grad(u), grad(v))*dx + u*v*dx)
+        return u.vector().inner(self.inner_prod_mat * v.vector())
 
     def ortho(self, u):
         basis = self.basis
@@ -258,7 +259,7 @@ class AffineReducedBasisSolver(object):
         psis_k = []
         for i, f in enumerate(self.coeffs):
             rhs = assemble(self.bl_matrix(params_idc, idx=i, bare=True)) * u.vector()
-            A = assemble(self.inner_prod_mat)
+            A = self.inner_prod_mat
             self.bcs.apply(A, rhs)
             psi_ki = Function(self.V)
             solve(A, psi_ki.vector(), rhs)
